@@ -1,0 +1,15 @@
+Validation rules metadata table
+
+CREATE TABLE validation_rules_metadata (
+   rule_id INT PRIMARY KEY,
+   rule_description VARCHAR(255) NOT NULL,
+   validation_query VARCHAR(32000) NOT NULL,
+   email_list VARCHAR(255) NOT NULL,
+   email_flag BOOLEAN NOT NULL,
+   threshold INT,
+   retry INT,
+   last_run TIMESTAMP,
+   severity INT NOT NULL,
+   active BOOLEAN NOT NULL
+);
+
