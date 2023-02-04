@@ -1,0 +1,144 @@
+python to upload xcel test case to jira xray
+
+import pandas as pd
+import requests
+import json
+
+# Read the Excel file into a pandas dataframe
+df = pd.read_excel('<path-to-excel-file>.xlsx')
+
+# Define the Jira Xray base URL and the endpoint for creating test cases
+xray_base_url = 'https://<your-jira-instance>.atlassian.net/rest/raven/1.0/import/execution/test'
+
+# Define the headers for the API call
+headers = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer <your-api-token>'
+}
+
+# Iterate over the rows in the dataframe
+for index, row in df.iterrows():
+    # Convert the row data to a JSON object
+    test_case_data = {
+        'summary': row['Summary'],
+        'preconditions': row['Preconditions'],
+        'steps': [
+            {
+                'step': row['Step'],
+                'data': row['Data'],
+                'result': row['Expected Result']
+            }
+        ]
+    }
+
+    # Convert the JSON object to a string
+    payload = json.dumps(test_case_data)
+
+    # Make the API call to create the test case
+    response = requests.post(xray_base_url, headers=headers, data=payload)
+
+    # Check the response status code
+    if response.status_code == 200:
+        print(f'Test case {index + 1} successfully uploaded')
+    else:
+        print(f'Error uploading test case {index + 1}:', response.text)
+
+
+--------------------------------------------------------------------------------------------
+
+
+
+
+import pandas as pd
+import requests
+import json
+
+# Read the Excel file into a pandas dataframe
+df = pd.read_excel('<path-to-excel-file>.xlsx')
+
+# Define the Jira Xray base URL and the endpoint for creating a test plan
+xray_base_url = 'https://<your-jira-instance>.atlassian.net/rest/raven/1.0/import/execution/testplan'
+
+# Define the headers for the API call
+headers = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer <your-api-token>'
+}
+
+# Define the test plan data
+test_plan_data = {
+    'testPlan': {
+        'name': '<test-plan-name>',
+        'description': '<test-plan-description>'
+    }
+}
+
+# Convert the test plan data to a string
+payload = json.dumps(test_plan_data)
+
+# Make the API call to create the test plan
+response = requests.post(xray_base_url, headers=headers, data=payload)
+
+# Check the response status code
+if response.status_code == 200:
+    test_plan_key = response.json()['key']
+    print(f'Test plan {test_plan_key} successfully created')
+else:
+    print('Error creating test plan:', response.text)
+
+# Define the endpoint for creating a test execution
+xray_base_url = 'https://<your-jira-instance>.atlassian.net/rest/raven/1.0/import/execution/testrun'
+
+# Define the test execution data
+test_execution_data = {
+    'testExecution': {
+        'testPlanKey': test_plan_key,
+        'version': '<version>',
+        'cycle': '<cycle>',
+        'environment': '<environment>'
+    }
+}
+
+# Convert the test execution data to a string
+payload = json.dumps(test_execution_data)
+
+# Make the API call to create the test execution
+response = requests.post(xray_base_url, headers=headers, data=payload)
+
+# Check the response status code
+if response.status_code == 200:
+    test_execution_key = response.json()['key']
+    print(f'Test execution {test_execution_key} successfully created')
+else:
+    print('Error creating test execution:', response.text)
+
+# Define the endpoint for creating test cases
+xray_base_url = 'https://<your-jira-instance>.atlassian.net/rest/raven/1.0/import/execution/test'
+
+# Iterate over the rows in the dataframe
+for index, row in df.iterrows():
+    # Convert the row data to a JSON object
+    test_case_data = {
+        'summary': row['Summary'],
+        'preconditions': row['Preconditions'],
+        'steps': [
+            {
+                'step': row['Step'],
+'data': row['Data'],
+'result': row['Result']
+}
+],
+'testExecutionKey': test_execution_key
+}
+
+# Convert the test case data to a string
+payload = json.dumps(test_case_data)
+
+# Make the API call to create the test case
+response = requests.post(xray_base_url, headers=headers, data=payload)
+
+# Check the response status code
+if response.status_code == 200:
+    print(f'Test case {row["Summary"]} successfully created')
+else:
+    print(f'Error creating test case {row["Summary"]}:', response.text)
