@@ -1,0 +1,269 @@
+CREATE TABLE data_quality_metadata (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    table_name VARCHAR(255) NOT NULL,
+    column_name VARCHAR(255) NOT NULL,
+    validation_rule VARCHAR(255) NOT NULL,
+    email_flag TINYINT(1) NOT NULL
+);
+
+
+CREATE TABLE data_quality_validation_rules (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    rule_name VARCHAR(255) NOT NULL,
+    validation_query TEXT NOT NULL
+);
+
+
+INSERT INTO data_quality_validation_rules (rule_name, validation_query)
+VALUES
+    ("NULL check", "SELECT COUNT(*) FROM {table_name} WHERE {column_name} IS NULL"),
+    ("Duplicate check", "SELECT {column_name}, COUNT(*) FROM {table_name} GROUP BY {column_name} HAVING COUNT(*) > 1"),
+    ("Data type check", "SELECT COUNT(*) FROM {table_name} WHERE NOT ISNUMERIC({column_name})");
+
+
+INSERT INTO data_quality_validation_rules (rule_name, validation_query)
+VALUES
+    ("Range check", "SELECT COUNT(*) FROM {table_name} WHERE {column_name} NOT BETWEEN {min_value} AND {max_value}"),
+    ("Regex check", "SELECT COUNT(*) FROM {table_name} WHERE {column_name} NOT REGEXP '{regex_pattern}'"),
+    ("Foreign key check", "SELECT COUNT(*) FROM {table_name} WHERE NOT EXISTS (SELECT * FROM {referenced_table} WHERE {referenced_column} = {table_name}.{column_name})");
+
+
+INSERT INTO data_quality_validation_rules (rule_name, validation_query)
+VALUES
+    ("String length check", "SELECT COUNT(*) FROM {table_name} WHERE LENGTH({column_name}) NOT BETWEEN {min_length} AND {max_length}"),
+    ("Date format check", "SELECT COUNT(*) FROM {table_name} WHERE {column_name} NOT LIKE '{date_format}'"),
+    ("Unique constraint check", "SELECT COUNT(*) FROM (SELECT {column_name_1}, {column_name_2}, ... FROM {table_name} GROUP BY {column_name_1}, {column_name_2}, ... HAVING COUNT(*) > 1) t");
+
+
+CREATE TABLE data_quality_validation_log (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    validation_rule_id INT NOT NULL,
+    table_name VARCHAR(100) NOT NULL,
+    validation_result INT NOT NULL,
+    validation_time DATETIME NOT NULL
+);
+
+
+---------------------
+
+version 1
+
+import snowflake.connector
+import datetime
+
+def execute_query(connection, query):
+    try:
+        cursor = connection.cursor()
+        cursor.execute(query)
+
+        if "SELECT" in query:
+            result = cursor.fetchall()
+        else:
+            connection.commit()
+            result = None
+
+        cursor.close()
+        return result
+
+    except (Exception, snowflake.connector.Error) as error:
+        print("Error while executing query", error)
+
+# Connect to Snowflake database
+connection = snowflake.connector.connect(
+    user='username',
+    password='password',
+    account='accountname',
+    warehouse='warehousename'
+)
+
+# Get the list of tables to validate from the data_quality_metadata table
+get_tables_query = "SELECT table_name, validation_rule_id FROM data_quality_metadata"
+tables_to_validate = execute_query(connection, get_tables_query)
+
+# Loop through each table and validate it
+for table in tables_to_validate:
+    table_name = table[0]
+    validation_rule_id = table[1]
+
+    # Get the validation rule for this table
+    get_validation_rule_query = "SELECT validation_query FROM data_quality_validation_rules WHERE rule_id = {}".format(validation_rule_id)
+    validation_rule = execute_query(connection, get_validation_rule_query)[0][0]
+
+    # Execute the validation query
+    validation_result = execute_query(connection, validation_rule.format(table_name=table_name))
+
+    # Insert the validation result into the data_quality_validation_log table
+    insert_validation_log_query = "INSERT INTO data_quality_validation_log (validation_rule_id, table_name, validation_result, validation_time) VALUES ({}, '{}', {}, '{}')".format(
+        validation_rule_id,
+        table_name,
+        len(validation_result),
+        datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    )
+    execute_query(connection, insert_validation_log_query)
+
+# Close the connection
+connection.close()
+
+
+
+------------------------------
+
+version 2
+
+
+import snowflake.connector
+
+# Connect to Snowflake database
+conn = snowflake.connector.connect(
+    user='<user_name>',
+    password='<password>',
+    account='<account_name>'
+)
+
+# Create a cursor to execute Snowflake queries
+cursor = conn.cursor()
+
+# Select data quality metadata table
+cursor.execute("SELECT * FROM data_quality_metadata")
+metadata = cursor.fetchall()
+
+# Iterate over metadata to get table name and validation scenario
+for meta in metadata:
+    table_name = meta[0]
+    validation_scenario = meta[1]
+    
+    # Select validation rule from data quality validation rule table
+    cursor.execute("SELECT rule FROM data_quality_validation_rule WHERE scenario = '{}'".format(validation_scenario))
+    validation_rule = cursor.fetchone()[0]
+    
+    # Execute validation rule query on table
+    cursor.execute("{} FROM {}".format(validation_rule, table_name))
+    result = cursor.fetchone()[0]
+    
+    # Evaluate scenario as pass or fail
+    if result:
+        scenario_result = 'PASS'
+    else:
+        scenario_result = 'FAIL'
+        
+    # Insert results into quality validation log table
+    cursor.execute("INSERT INTO data_quality_validation_log (table_name, validation_scenario, scenario_result) VALUES ('{}', '{}', '{}')".format(table_name, validation_scenario, scenario_result))
+    
+# Commit changes
+conn.commit()
+
+# Close cursor and connection
+cursor.close()
+conn.close()
+
+
+
+---------------------------------------------------------
+
+
+import snowflake.connector
+import smtplib
+from email.mime.text import MIMEText
+
+# Connect to Snowflake database
+conn = snowflake.connector.connect(
+    user='<user_name>',
+    password='<password>',
+    account='<account_name>'
+)
+
+# Create a cursor to execute Snowflake queries
+cursor = conn.cursor()
+
+# Extract validation log
+cursor.execute("SELECT * FROM data_quality_validation_log")
+validation_log = cursor.fetchall()
+
+# Count number of pass and fail scenarios
+pass_count = 0
+fail_count = 0
+for log in validation_log:
+    if log[2] == 'PASS':
+        pass_count += 1
+    else:
+        fail_count += 1
+
+# Calculate overall quality metrics
+total_scenarios = pass_count + fail_count
+pass_percent = (pass_count / total_scenarios) * 100
+fail_percent = 100 - pass_percent
+
+# Compose email with validation results and overall quality metrics
+subject = "Data Quality Validation Results"
+body = "Data Quality Validation Results:\n\n"
+body += "Pass: {} ({}%)\n".format(pass_count, pass_percent)
+body += "Fail: {} ({}%)\n\n".format(fail_count, fail_percent)
+body += "Validation Log:\n"
+for log in validation_log:
+    body += "{} - {} - {}\n".format(log[0], log[1], log[2])
+
+msg = MIMEText(body)
+msg['Subject'] = subject
+msg['From'] = '<from_email>'
+msg['To'] = '<to_email>'
+
+# Send email
+smtp_server = smtplib.SMTP('<smtp_server>')
+smtp_server.sendmail(msg['From'], msg['To'], msg.as_string())
+smtp_server.quit()
+
+# Close cursor and connection
+cursor.close()
+conn.close()
+
+
+--------------------------------------------------
+
+version with pie chart
+
+
+
+import snowflake.connector
+import matplotlib.pyplot as plt
+
+# Connect to Snowflake database
+conn = snowflake.connector.connect(
+    user='<user_name>',
+    password='<password>',
+    account='<account_name>'
+)
+
+# Create a cursor to execute Snowflake queries
+cursor = conn.cursor()
+
+# Extract validation log
+cursor.execute("SELECT * FROM data_quality_validation_log")
+validation_log = cursor.fetchall()
+
+# Count number of pass, fail, and not run scenarios
+pass_count = 0
+fail_count = 0
+not_run_count = 0
+for log in validation_log:
+    if log[2] == 'PASS':
+        pass_count += 1
+    elif log[2] == 'FAIL':
+        fail_count += 1
+    else:
+        not_run_count += 1
+
+# Plot pie chart with pass, fail, and not run scenarios
+labels = ['Pass', 'Fail', 'Not Run']
+sizes = [pass_count, fail_count, not_run_count]
+colors = ['lightgreen', 'red', 'yellow']
+plt.pie(sizes, labels=labels, colors=colors, startangle=90, autopct='%1.1f%%')
+plt.axis('equal')
+plt.title("Data Quality Validation Results")
+plt.show()
+
+# Close cursor and connection
+cursor.close()
+conn.close()
+
+
+---------------------------------------------------------------------------------------------
