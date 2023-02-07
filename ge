@@ -1,0 +1,86 @@
+# Step 1: Install Great Expectations
+!pip install great_expectations
+
+# Step 2: Create a Snowflake Config File
+# Create a Snowflake config file and store it in a secure location.
+# The config file should contain the Snowflake credentials as shown below:
+
+# [snowflake]
+# user=<user_name>
+# password=<password>
+# account=<account_name>
+# database=<database_name>
+# schema=<schema_name>
+# warehouse=<warehouse_name>
+
+# Step 3: Connect to Snowflake using the Config File
+import configparser
+import snowflake.connector
+
+config = configparser.ConfigParser()
+config.read("snowflake.cfg")
+
+conn = snowflake.connector.connect(
+  user=config.get("snowflake", "user"),
+  password=config.get("snowflake", "password"),
+  account=config.get("snowflake", "account")
+)
+
+# Step 4: Create expectations
+import great_expectations as ge
+
+# create a context
+context = ge.data_context.DataContext()
+
+# create a DataAsset
+asset_name = "my_snowflake_table"
+asset = context.create_data_asset(
+    asset_name,
+    "snowflake",
+    connection_config={"user": config.get("snowflake", "user"), "password": config.get("snowflake", "password"), "account": config.get("snowflake", "account"), "database": config.get("snowflake", "database"), "schema": config.get("snowflake", "schema"), "warehouse": config.get("snowflake", "warehouse")},
+    table_name="table_name"
+)
+
+# create expectations for multiple columns
+expectations = [
+    ge.expectations.expect_column_values_to_be_in_set(column="column_name_1", value_set=[1,2,3,4,5]),
+    ge.expectations.expect_column_values_to_be_unique(column="column_name_2"),
+    ge.expectations.expect_column_min_length(column="column_name_3", min_length=10),
+    ge.expectations.expect_column_max_length(column="column_name_4", max_length=100),
+    ge.expectations.expect_column_mean_to_be_between(column="column_name_5", min_value=0, max_value=100)
+]
+
+# Step 5: Run data validation
+validation_result = context.run_validation_operator(
+    "action_list_operator",
+    assets_to_validate=[asset_name],
+    expectations_config={
+        "expectations": [e.to_dict() for e in expectations]
+    }
+)
+
+# Step 6: Handle validation results
+if validation_result["success"]:
+    print("Data validation successful!")
+else:
+    print("Data validation failed.")
+    for error in validation_result["results"][asset_name]["details"]["failure_counts"]:
+print("Column: ", error["column_name"])
+print("Expectation: ", error["expectation_config"]["expectation_type"])
+print("Message: ", error["message"])
+
+Step 7: Store Validation Results
+context.save_validation_operator_result(validation_result)
+
+Step 8: Retrieve Validation Results
+stored_result = context.get_last_validation_operator_result(asset_name)
+
+Step 9: Check if Stored Results Match the Current Results
+if stored_result == validation_result:
+print("Validation results match the stored results.")
+else:
+print("Validation results do not match the stored results.")
+
+Step 10: Close Snowflake Connection
+conn.close()
+
