@@ -1,0 +1,69 @@
+CREATE TABLE metadata_tables (
+    table_name VARCHAR,
+    schema_name VARCHAR,
+    database_name VARCHAR,
+    audit_table_name VARCHAR,
+    PRIMARY KEY (table_name, schema_name, database_name)
+);
+
+
+CREATE TABLE metadata_rules (
+    table_name VARCHAR,
+    schema_name VARCHAR,
+    database_name VARCHAR,
+    rule_expression VARCHAR,
+    PRIMARY KEY (table_name, schema_name, database_name, rule_expression)
+);
+
+
+import snowflake.connector
+
+# Connect to Snowflake using your account details
+conn = snowflake.connector.connect(
+    user='<your-username>',
+    password='<your-password>',
+    account='<your-account>',
+    warehouse='<your-warehouse>',
+    database='<your-database>',
+    schema='<your-schema>'
+)
+
+# Fetch the metadata from the Snowflake table
+cursor = conn.cursor()
+cursor.execute("SELECT * FROM metadata_tables")
+metadata_tables = cursor.fetchall()
+
+# Loop over each table in the metadata_tables and execute validation rules
+for metadata_table in metadata_tables:
+    table_name = metadata_table[0]
+    schema_name = metadata_table[1]
+    database_name = metadata_table[2]
+    audit_table_name = metadata_table[3]
+
+    # Fetch the validation rules for this table
+    cursor.execute(f"SELECT rule_expression FROM metadata_rules WHERE table_name='{table_name}' AND schema_name='{schema_name}' AND database_name='{database_name}'")
+    rules = [row[0] for row in cursor.fetchall()]
+
+    # Define the function to apply the validation rules
+    def validate_data(data):
+        for rule in rules:
+            if not eval(rule):
+                return False
+        return True
+
+    # Fetch the data to be validated from the Snowflake table
+    cursor.execute(f"SELECT * FROM {database_name}.{schema_name}.{table_name}")
+    data = cursor.fetchall()
+
+    # Validate the data using the rules and write the results to the audit table
+    for row in data:
+        if validate_data(row):
+            cursor.execute(f"INSERT INTO {database_name}.{schema_name}.{audit_table_name} VALUES ('{table_name}', '{schema_name}', '{database_name}', {row}, 'valid')")
+        else:
+            cursor.execute(f"INSERT INTO {database_name}.{schema_name}.{audit_table_name} VALUES ('{table_name}', '{schema_name}', '{database_name}', {row}, 'invalid')")
+
+# Commit the changes to the Snowflake database
+conn.commit()
+
+# Close the Snowflake connection
+conn.close()
