@@ -1,0 +1,51 @@
+import requests
+import smtplib
+from email.mime.text import MIMEText
+
+# Bitbucket Server API endpoint for license details
+bitbucket_url = "https://your-bitbucket-instance.com/rest/plugins/1.0/com.atlassian.bitbucket.server.bitbucket-bundled-plugins-key/license"
+
+# JIRA API endpoint for license details
+jira_url = "https://your-jira-instance.com/rest/atlassian-connect/1/addons/com.atlassian.jira/license"
+
+# Bitbucket Server API username and password
+bitbucket_api_username = "your-bitbucket-api-username"
+bitbucket_api_password = "your-bitbucket-api-password"
+
+# Your JIRA API token (generate one at https://id.atlassian.com/manage/api-tokens)
+jira_api_token = "your-jira-api-token"
+
+# Your email credentials
+smtp_server = "smtp.your-email-provider.com"
+smtp_port = 587
+email_username = "your-email-username"
+email_password = "your-email-password"
+recipient_email = "recipient-email@example.com"
+
+# Make the API request to Bitbucket Server to retrieve license details
+response = requests.get(bitbucket_url, auth=(bitbucket_api_username, bitbucket_api_password))
+
+# Parse the license count from the Bitbucket Server API response
+bitbucket_license_count = response.json()["maximumNumberOfUsers"]
+
+# Make the API request to JIRA to retrieve license details
+headers = {"Authorization": f"Bearer {jira_api_token}"}
+params = {"appKey": "com.atlassian.jira"}
+response = requests.get(jira_url, headers=headers, params=params)
+
+# Parse the license count from the JIRA API response
+jira_license_count = response.json()["maximumNumberOfUsers"]
+
+# Compose the email message
+email_subject = "License Counts for Bitbucket Server and JIRA Data Center"
+email_body = f"The current license count for Bitbucket Server is {bitbucket_license_count} users. \n\nThe current license count for JIRA Data Center is {jira_license_count} users."
+message = MIMEText(email_body)
+message["Subject"] = email_subject
+message["From"] = email_username
+message["To"] = recipient_email
+
+# Send the email using SMTP
+with smtplib.SMTP(smtp_server, smtp_port) as smtp:
+    smtp.starttls()
+    smtp.login(email_username, email_password)
+    smtp.send_message(message)
