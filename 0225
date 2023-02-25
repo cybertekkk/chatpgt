@@ -1,0 +1,116 @@
+import snowflake.connector
+import pandas as pd
+import numpy as np
+import smtplib
+from email.mime.text import MIMEText
+
+# Snowflake connection parameters
+snowflake_account = 'your-snowflake-account'
+snowflake_user = 'your-snowflake-user'
+snowflake_password = 'your-snowflake-password'
+snowflake_database = 'your-snowflake-database'
+snowflake_schema = 'your-snowflake-schema'
+
+# Snowflake tables to compare
+source_table = 'your-source-table'
+target_table = 'your-target-table'
+
+# Snowflake query to retrieve data from the source table
+source_query = f'SELECT * FROM {source_table}'
+
+# Snowflake query to retrieve data from the target table
+target_query = f'SELECT * FROM {target_table}'
+
+# Column names to exclude from validation
+exclude_columns = ['created_at', 'updated_at']
+
+# Connect to Snowflake
+conn = snowflake.connector.connect(
+    account=snowflake_account,
+    user=snowflake_user,
+    password=snowflake_password,
+    database=snowflake_database,
+    schema=snowflake_schema
+)
+
+# Retrieve data from the source table
+source_data = pd.read_sql(source_query, conn)
+
+# Retrieve data from the target table
+target_data = pd.read_sql(target_query, conn)
+
+# Get the list of columns to validate
+source_columns = list(source_data.columns)
+target_columns = list(target_data.columns)
+columns_to_validate = list(set(source_columns) & set(target_columns))
+columns_to_validate = [c for c in columns_to_validate if c not in exclude_columns]
+
+# Initialize validation results
+validation_results = []
+
+# Perform column-level comparisons between the source and target tables
+for column in columns_to_validate:
+    source_values = source_data[column].values
+    target_values = target_data[column].values
+    if np.array_equal(source_values, target_values):
+        validation_results.append(f'Column {column} matches between the source and target tables')
+    else:
+        validation_results.append(f'Column {column} does not match between the source and target tables')
+
+# Perform data type and null value checks
+for column in source_columns:
+    if column not in columns_to_validate and column not in exclude_columns:
+        continue
+    source_dtype = str(source_data[column].dtype)
+    target_dtype = str(target_data[column].dtype)
+    if source_dtype != target_dtype:
+        validation_results.append(f'Column {column} has different data types in the source and target tables')
+    if source_data[column].isnull().sum() != target_data[column].isnull().sum():
+        validation_results.append(f'Column {column} has different null value counts in the source and target tables')
+
+# Perform row-level comparisons between the source and target tables
+join_columns = ['id']
+source_index = pd.Index(source_data[join_columns])
+target_index = pd.Index(target_data[join_columns])
+common_index = source_index.intersection(target_index)
+source_unique_index = source_index.difference(common_index)
+target_unique_index = target_index.difference(common_index)
+
+# Rows that exist only in the source table
+source_unique_rows = source_data.loc[source_data[join_columns].isin(source_unique_index).values]
+
+# Rows that exist only in the target table
+target_unique_rows = target_data.loc[target_data[join_columns].isin(target_unique_index).values]
+
+# Rows that exist in both tables
+common_rows = pd.merge(source_data, target_data, on=join_columns, how='inner', suffixes=('_source', '_target'))
+for column in columns_to_validate:
+    common_rows[f'{column}_match'] = np.where(common_rows[f'{column}_source'] == common_rows[f'{column}_target'], True, False)
+    
+    
+    common_rows['row_match'] = common_rows[ [f'{column}_match' for column in columns_to_validate] ].all(axis=1)
+
+#Append row-level validation results to the overall validation results
+validation_results.append(f'Total number of rows in the source table: {len(source_data)}')
+validation_results.append(f'Total number of rows in the target table: {len(target_data)}')
+validation_results.append(f'Number of rows that exist only in the source table: {len(source_unique_rows)}')
+validation_results.append(f'Number of rows that exist only in the target table: {len(target_unique_rows)}')
+validation_results.append(f'Number of rows that exist in both tables: {len(common_rows)}')
+validation_results.append(f'Number of rows that match between the source and target tables: {common_rows["row_match"].sum()}')
+
+#Generate a detailed validation report
+report = '\n'.join(validation_results)
+
+#Send an email with the validation report
+sender_email = 'your-sender-email'
+sender_password = 'your-sender-password'
+recipient_email = 'your-recipient-email'
+subject = 'Data Validation Report'
+message = MIMEText(report)
+message['Subject'] = subject
+message['From'] = sender_email
+message['To'] = recipient_email
+with smtplib.SMTP('smtp.gmail.com', 587) as server:
+server.starttls()
+server.login(sender_email, sender_password)
+server.sendmail(sender_email, recipient_email, message.as_string())
