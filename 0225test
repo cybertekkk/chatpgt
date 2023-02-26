@@ -1,20 +1,18 @@
 import requests
-import json
 
 # Replace the values below with your own JIRA instance URL and credentials
 jira_url = "https://your-jira-instance.atlassian.net"
 username = "your-jira-username"
 password = "your-jira-password"
 
-# Construct the API endpoint URL for retrieving the licensed user count
+# Construct the API endpoint URL for retrieving the license details
 url = jira_url + "/rest/api/2/license"
 
-# Make the API request and parse the response as JSON
+# Make the API request and extract the licensed user count from the response
 response = requests.get(url, auth=(username, password))
-data = json.loads(response.text)
-
-# Extract the licensed user count from the response
-licensed_user_count = data["maximumNumberOfUsers"]
-
-# Print the licensed user count
-print("Licensed user count:", licensed_user_count)
+if response.status_code == 200:
+    data = response.json()
+    licensed_user_count = data["maximumNumberOfUsers"]
+    print("Licensed user count:", licensed_user_count)
+else:
+    print("Failed to retrieve license details:", response.text)
