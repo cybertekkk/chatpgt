@@ -1,0 +1,24 @@
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.mail.Email
+import com.atlassian.mail.server.MailServerManager
+
+// Get the current license count
+def licenseManager = ComponentAccessor.getLicenseManager()
+def licenseCount = licenseManager.getLicense().getActiveUserCount()
+
+// Get the mail server details
+def mailServerManager = ComponentAccessor.getComponent(MailServerManager)
+def mailServer = mailServerManager.getDefaultSMTPMailServer()
+
+// Create the email message
+def email = new Email(
+    "recipient@example.com", // replace with recipient email address
+    "License count in Jira", // replace with email subject
+    "The current license count in Jira is: " + licenseCount, // replace with email body
+    null,
+    null,
+    null,
+    mailServer)
+
+// Send the email
+mailServer.send(email)
