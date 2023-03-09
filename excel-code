@@ -1,0 +1,101 @@
+import snowflake.connector
+import pandas as pd
+import openpyxl
+import pdfkit
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+# Define the error class for invalid inputs
+class InvalidInputError(Exception):
+    pass
+
+# Read the Excel file
+try:
+    wb = openpyxl.load_workbook('data.xlsx')
+    sheet = wb.active
+    username = sheet['A1'].value
+    password = sheet['B1'].value
+    account = sheet['C1'].value
+    database = sheet['D1'].value
+    schema = sheet['E1'].value
+    source_query = sheet['F1'].value
+    target_query = sheet['G1'].value
+
+    if not username or not password or not account or not database or not schema or not source_query or not target_query:
+        raise InvalidInputError('One or more input values missing')
+
+except Exception as e:
+    print(f'Error reading input data from Excel: {str(e)}')
+    exit()
+
+# Connect to Snowflake
+try:
+    conn = snowflake.connector.connect(
+        user=username,
+        password=password,
+        account=account,
+        database=database,
+        schema=schema
+    )
+except Exception as e:
+    print(f'Error connecting to Snowflake: {str(e)}')
+    exit()
+
+# Run the source and target queries
+try:
+    source_df = pd.read_sql_query(source_query, conn)
+    target_df = pd.read_sql_query(target_query, conn)
+
+    if source_df.empty or target_df.empty:
+        raise InvalidInputError('One or both queries returned empty result set')
+
+except Exception as e:
+    print(f'Error running queries: {str(e)}')
+    exit()
+
+# Compare the data
+try:
+    def custom_comparison_logic(df1, df2):
+        # Replace with your own custom comparison logic
+        return df1.equals(df2)
+
+    comparison_result = custom_comparison_logic(source_df, target_df)
+
+except Exception as e:
+    print(f'Error comparing data: {str(e)}')
+    exit()
+
+# Generate the report
+try:
+    env = Environment(
+        loader=FileSystemLoader('.'),
+        autoescape=select_autoescape(['html', 'xml'])
+    )
+    template = env.get_template('template.html')
+    html = template.render(
+        source_query=source_query,
+        target_query=target_query,
+        comparison_result=comparison_result
+    )
+
+except Exception as e:
+    print(f'Error generating HTML report: {str(e)}')
+    exit()
+
+# Convert the HTML report to PDF
+try:
+    pdfkit.from_string(html, 'report.pdf')
+
+except Exception as e:
+    print(f'Error converting HTML to PDF: {str(e)}')
+    exit()
+
+# Save the report
+try:
+    with open('report.html', 'w') as f:
+        f.write(html)
+
+except Exception as e:
+    print(f'Error saving HTML report: {str(e)}')
+    exit()
+
+print('Validation report generated successfully')
