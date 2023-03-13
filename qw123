@@ -1,0 +1,63 @@
+import snowflake.connector
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
+def run_data_quality_report(table_list, column_list, conn):
+    data = []
+    for table_name in table_list:
+        for col_name in column_list:
+            # Check for null values
+            null_query = f"SELECT COUNT(*) FROM {table_name} WHERE {col_name} IS NULL;"
+            cursor = conn.cursor()
+            cursor.execute(null_query)
+            null_result = cursor.fetchone()[0]
+            if null_result > 0:
+                print(f"Data quality issue detected in table '{table_name}', column '{col_name}': {null_result} rows have null values.")
+                data.append([table_name, col_name, "Null", null_result])
+            
+            # Check for pattern
+            pattern_query = f"SELECT COUNT(*) FROM {table_name} WHERE {col_name} IS NOT NULL AND NOT REGEXP_LIKE({col_name}, '[A-Za-z0-9_]+');"
+            cursor.execute(pattern_query)
+            pattern_result = cursor.fetchone()[0]
+            if pattern_result > 0:
+                print(f"Data quality issue detected in table '{table_name}', column '{col_name}': {pattern_result} rows do not match the pattern.")
+                data.append([table_name, col_name, "Pattern", pattern_result])
+            
+            # Check for duplicates
+            duplicate_query = f"SELECT COUNT(*) FROM (SELECT {col_name}, COUNT(*) as count FROM {table_name} GROUP BY {col_name} HAVING count > 1);"
+            cursor.execute(duplicate_query)
+            duplicate_result = cursor.fetchone()[0]
+            if duplicate_result > 0:
+                print(f"Data quality issue detected in table '{table_name}', column '{col_name}': {duplicate_result} duplicate values.")
+                data.append([table_name, col_name, "Duplicate", duplicate_result])
+            
+            # If no issues were detected, print a message
+            if null_result == 0 and pattern_result == 0 and duplicate_result == 0:
+                print(f"No data quality issues detected in table '{table_name}', column '{col_name}'.")
+    return pd.DataFrame(data, columns=['Table Name', 'Column Name', 'Issue Type', 'Issue Count'])
+
+# Replace <your_account>, <your_user>, <your_password>, and <your_database> with your Snowflake credentials
+conn = snowflake.connector.connect(
+    user='<your_user>',
+    password='<your_password>',
+    account='<your_account>',
+    database='<your_database>',
+    warehouse='COMPUTE_WH',
+    schema='PUBLIC'
+)
+
+table_list = ['table1', 'table2', 'table3']
+column_list = ['col1', 'col2', 'col3']
+
+df = run_data_quality_report(table_list, column_list, conn)
+
+conn.close()
+
+if not df.empty:
+    # Create a bar chart to display the data quality report
+    fig = px.bar(df, x='Table Name', y='Issue Count', color='Issue Type', barmode='group')
+    fig.update_layout(title_text='Data Quality Report', xaxis_title='Table Name', yaxis_title='Issue Count')
+    fig.show()
+else:
+    print('No data quality issues detected.')
