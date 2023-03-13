@@ -85,3 +85,28 @@ if not df.empty:
     fig.show()
 else:
     print('No data quality issues detected.')
+
+
+
+
+def run_data_quality_report(table_list, column_checks, conn, column_list=None):
+    data = []
+    for table_name in table_list:
+        if column_list:
+            cols = column_list[table_name]
+        else:
+            cols = column_checks[table_name].keys()
+        for col_name in cols:
+            checks = column_checks[table_name][col_name]
+            for check_type, check_script in checks.items():
+                # Use proper syntax for Snowflake SQL functions and escape column names and table names with quotes
+                query = f"SELECT COUNT(*) FROM \"{table_name}\" WHERE \"{col_name}\" IS NOT NULL AND {check_script};"
+                cursor = conn.cursor()
+                cursor.execute(query)
+                result = cursor.fetchone()[0]
+                if result > 0:
+                    print(f"Data quality issue detected in table '{table_name}', column '{col_name}', check '{check_type}': {result} rows failed the check.")
+                    data.append([table_name, col_name, check_type, result])
+                else:
+                    print(f"No data quality issues detected in table '{table_name}', column '{col_name}', check '{check_type}'.")
+    return pd.DataFrame(data, columns=['Table Name', 'Column Name', 'Check Type', 'Issue Count'])
