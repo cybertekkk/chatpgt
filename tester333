@@ -3,10 +3,15 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-def run_data_quality_report(table_list, column_checks, conn):
+def run_data_quality_report(table_list, column_checks, conn, column_list=None):
     data = []
     for table_name in table_list:
-        for col_name, checks in column_checks[table_name].items():
+        if column_list:
+            cols = column_list[table_name]
+        else:
+            cols = column_checks[table_name].keys()
+        for col_name in cols:
+            checks = column_checks[table_name][col_name]
             for check_type, check_script in checks.items():
                 query = f"SELECT COUNT(*) FROM {table_name} WHERE {col_name} IS NOT NULL AND {check_script};"
                 cursor = conn.cursor()
@@ -62,7 +67,14 @@ column_checks = {
     }
 }
 
-df = run_data_quality_report(table_list, column_checks, conn)
+# Define the columns to check for each table
+column_list = {
+    'table1': ['col1', 'col2'],
+    'table2': ['col3', 'col4'],
+    'table3': ['col5', 'col6']
+}
+
+df = run_data_quality_report(table_list, column_checks, conn, column_list)
 
 conn.close()
 
