@@ -1,17 +1,11 @@
 import snowflake.connector
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 
-def run_data_quality_report(table_list, column_checks, conn, column_list=None):
+def run_data_quality_checks(table_list, column_checks, conn):
     data = []
     for table_name in table_list:
-        if column_list:
-            cols = column_list[table_name]
-        else:
-            cols = column_checks[table_name].keys()
-        for col_name in cols:
-            checks = column_checks[table_name][col_name]
+        for col_name, checks in column_checks[table_name].items():
             for check_type, check_script in checks.items():
                 query = f"SELECT COUNT(*) FROM {table_name} WHERE {col_name} IS NOT NULL AND {check_script};"
                 cursor = conn.cursor()
@@ -24,14 +18,14 @@ def run_data_quality_report(table_list, column_checks, conn, column_list=None):
                     print(f"No data quality issues detected in table '{table_name}', column '{col_name}', check '{check_type}'.")
     return pd.DataFrame(data, columns=['Table Name', 'Column Name', 'Check Type', 'Issue Count'])
 
-# Replace <your_account>, <your_user>, <your_password>, and <your_database> with your Snowflake credentials
+# Define the Snowflake credentials and connect to Snowflake
 conn = snowflake.connector.connect(
     user='<your_user>',
     password='<your_password>',
     account='<your_account>',
     database='<your_database>',
-    warehouse='COMPUTE_WH',
-    schema='PUBLIC'
+    schema='<your_schema>',
+    warehouse='<your_warehouse>'
 )
 
 # Define the tables and columns to check, along with the data quality checks to perform for each column
@@ -67,46 +61,15 @@ column_checks = {
     }
 }
 
-# Define the columns to check for each table
-column_list = {
-    'table1': ['col1', 'col2'],
-    'table2': ['col3', 'col4'],
-    'table3': ['col5', 'col6']
-}
+# Run the data quality checks and get the results as a Pandas DataFrame
+df = run_data_quality_checks(table_list, column_checks, conn)
 
-df = run_data_quality_report(table_list, column_checks, conn, column_list)
-
+# Close the Snowflake connection
 conn.close()
 
 if not df.empty:
-    # Create a bar chart to display the data quality report
-    fig = px.bar(df, x='Table Name', y='Issue Count', color='Check Type', barmode='group')
-    fig.update_layout(title_text='Data Quality Report', xaxis_title='Table Name', yaxis_title='Issue Count')
+    # Create a pie chart to display the data quality issues by table name
+    fig = px.pie(df, names='Table Name', values='Issue Count', title='Data Quality Issues by Table Name')
     fig.show()
 else:
     print('No data quality issues detected.')
-
-
-
-
-def run_data_quality_report(table_list, column_checks, conn, column_list=None):
-    data = []
-    for table_name in table_list:
-        if column_list:
-            cols = column_list[table_name]
-        else:
-            cols = column_checks[table_name].keys()
-        for col_name in cols:
-            checks = column_checks[table_name][col_name]
-            for check_type, check_script in checks.items():
-                # Use proper syntax for Snowflake SQL functions and escape column names and table names with quotes
-                query = f"SELECT COUNT(*) FROM \"{table_name}\" WHERE \"{col_name}\" IS NOT NULL AND {check_script};"
-                cursor = conn.cursor()
-                cursor.execute(query)
-                result = cursor.fetchone()[0]
-                if result > 0:
-                    print(f"Data quality issue detected in table '{table_name}', column '{col_name}', check '{check_type}': {result} rows failed the check.")
-                    data.append([table_name, col_name, check_type, result])
-                else:
-                    print(f"No data quality issues detected in table '{table_name}', column '{col_name}', check '{check_type}'.")
-    return pd.DataFrame(data, columns=['Table Name', 'Column Name', 'Check Type', 'Issue Count'])
